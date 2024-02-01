@@ -8,3 +8,5 @@ Here is a template for Task1.
 2. Install pytorch: https://pytorch.org/get-started/locally/
 3. I have written the download of mnist into the code, please enjoy it. Use python main.py to run the code.
 
+Task2:
+Please call ResNet50 from the package torchvision
