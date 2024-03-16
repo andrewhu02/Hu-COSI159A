@@ -42,6 +42,10 @@ class AngularPenaltySMLoss(nn.Module):
         return -torch.mean(L)
 
 
+import torch
+from torch import nn
+import torch.nn.functional as F
+
 class SphereCNN(nn.Module):
     def __init__(self, class_num: int, feature=False):
         super(SphereCNN, self).__init__()
@@ -71,7 +75,7 @@ class SphereCNN(nn.Module):
             x_angle = self.angular(x, y)
             return x, x_angle
 
-
+# Example usage
 if __name__ == "__main__":
     net = SphereCNN(50)
     input = torch.ones(64, 3, 96, 96)

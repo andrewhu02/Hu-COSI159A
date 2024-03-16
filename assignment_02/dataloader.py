@@ -6,10 +6,11 @@ from PIL import Image
 
 from torch.utils.data import Dataset
 from torchvision import transforms
+from torchvision.transforms import RandomApply, ColorJitter, RandomRotation, RandomCrop, RandomHorizontalFlip
 
 
 class LFW4Training(Dataset):
-    def __init__(self, train_file: str, img_folder: str):
+    def __init__(self, train_file: str, img_folder: str, transform=None):
         self.img_folder = img_folder
 
         names = os.listdir(img_folder)
@@ -31,12 +32,14 @@ class LFW4Training(Dataset):
             else:
                 pass
 
-        self.transform = transforms.Compose([
-            transforms.Resize(96),
-            transforms.RandomHorizontalFlip(),
+        self.transform = transform if transform is not None else transforms.Compose([
+            RandomApply([ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)], p=0.5),
+            RandomApply([RandomRotation(degrees=15)], p=0.5),
+            RandomApply([RandomCrop(size=96)], p=0.5),
+            RandomHorizontalFlip(),
+            transforms.RandomRotation(degrees=15),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5],
-                                 std=[0.5, 0.5, 0.5]),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ])
 
     def __getitem__(self, index):
@@ -45,10 +48,15 @@ class LFW4Training(Dataset):
         img = Image.open(os.path.join(self.img_folder, img_path))
         img = self.transform(img)
 
-        name = img_path.split("/")[0]
-        label = self.name2label[name]
+        name = img_path.split(os.path.sep)[0]  
+        label = self.name2label.get(name)
+
+        if label is None:
+            print(f"Warning: Label not found for name: {name}. Skipping this data point.")
+            return None, None
 
         return img, label
+
 
     def __len__(self):
         return len(self.train_list)
@@ -89,14 +97,32 @@ class LFW4Eval(Dataset):
         ])
 
     def __getitem__(self, index):
-        img_1_path, img_2_path, label = self.eval_list[index]
+        img_pair = self.eval_list[index]
+        img1_path, img2_path, label = img_pair
 
-        img_1 = Image.open(os.path.join(self.img_folder, img_1_path))
-        img_2 = Image.open(os.path.join(self.img_folder, img_2_path))
-        img_1 = self.transform(img_1)
-        img_2 = self.transform(img_2)
+        # Load first image
+        try:
+            img1 = Image.open(os.path.join(self.img_folder, img1_path))
+        except Exception as e:
+            print(f"Failed to load image: {img1_path}")
+            return None, None
 
-        return img_1, img_2, label
+        # Load second image
+        try:
+            img2 = Image.open(os.path.join(self.img_folder, img2_path))
+        except Exception as e:
+            print(f"Failed to load image: {img2_path}")
+            return None, None
+
+        # Apply transformations
+        try:
+            img1 = self.transform(img1)
+            img2 = self.transform(img2)
+        except Exception as e:
+            print("Failed to apply transformations.")
+            return None, None
+
+        return img1, img2, label
 
     def __len__(self):
         return len(self.eval_list)
