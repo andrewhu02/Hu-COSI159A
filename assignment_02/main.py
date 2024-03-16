@@ -2,17 +2,17 @@
 # @Contact : peizhaoli05@gmail.com
 
 import time
-
 import torch
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader
+from torchvision import transforms
 
 from model import SphereCNN
 from dataloader import LFW4Training, LFW4Eval
 from parser import parse_args
 from utils import set_seed, AverageMeter
-
+import torch_directml
 
 def eval(data_loader: DataLoader, model: SphereCNN, device: torch.device, threshold: float = 0.5):
     model.eval()
@@ -49,9 +49,18 @@ def main():
     args = parse_args()
 
     set_seed(args.seed)
-    device = torch.device(args.device)
+    device = torch_directml.device()
 
-    train_set = LFW4Training(args.train_file, args.img_folder)
+    train_transform = transforms.Compose([
+        transforms.RandomHorizontalFlip(),  # Random horizontal flip
+        transforms.Resize(120),  # Resize to a larger size for random crop
+        transforms.RandomCrop(96),  # Random crop to 96x96
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),  # Color jittering
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    ])
+
+    train_set = LFW4Training(args.train_file, args.img_folder, transform=train_transform)
     eval_set = LFW4Eval(args.eval_file, args.img_folder)
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
     eval_loader = DataLoader(eval_set, batch_size=args.batch_size)
@@ -84,7 +93,6 @@ def main():
             eval(eval_loader, model, device)
 
     return
-
 
 if __name__ == "__main__":
     main()
