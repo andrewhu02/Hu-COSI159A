@@ -3,86 +3,99 @@ import pandas as pd
 from matplotlib import pyplot as plt
 
 # Define age and race ranges
-AGE = {"0-2": 0, "3-9": 1, "10-19": 2, "20-29": 3, "30-39": 4,
-       "40-49": 5, "50-59": 6, "60-69": 7, "more than 70": 8}
+AGE = {(0, 2): "0-2", (3, 9): "3-9", (10, 19): "10-19", (20, 29): "20-29",
+       (30, 39): "30-39", (40, 49): "40-49", (50, 59): "50-59", (60, 69): "60-69", (70, float('inf')): "more than 70"}
+race_names = ["White", "Black", "Asian", "Latino_Hispanic", "Middle Eastern", "Indian"]
 
-RACE = {"White": 0, "Indian": [1, 3], "East Asian": 2, "Southeast Asian": 3,
-        "Latino_Hispanic": 4, "Middle Eastern": 5, "Black": 6}
 
 # Load labels function
 def load_labels(filename: str) -> pd.DataFrame:
     return pd.read_csv(filename)
 
 # Function to map age to age range
-def map_age_to_range(age: int) -> int:
-    for range_str, range_value in AGE.items():
-        if isinstance(range_value, tuple):
-            if range_value[0] <= age <= range_value[1]:
-                return range_value
-        else:
-            if age == range_value:
-                return range_value
-    return -1  # return -1 or any other value to indicate "Unknown"
-
-# Function to map race to race category
-def map_race_to_category(race: str) -> str:
-    race_lower = race.lower()
-    for race_category, race_values in RACE.items():
-        if isinstance(race_values, list):
-            if race_lower in [rv.lower() for rv in race_values]:
-                return race_category
-        else:
-            if race_lower == race_category.lower():
-                return race_category
+def map_age_to_range(age: int) -> str:
+    for range_tuple, range_str in AGE.items():
+        if isinstance(range_tuple, tuple):
+            if range_tuple[0] <= age <= range_tuple[1]:
+                return range_str
     return "Unknown"
 
 
-def calculate_statistics(predictions_df: pd.DataFrame, merged_df: pd.DataFrame):
+def calculate_statistics(merged_df: pd.DataFrame):
+    # Initialize statistics
     statistics = {
         "total": {"count": 0, "total_bins_difference": 0},
-        "age_ranges": {i: {"count": 0, "total_bins_difference": 0} for i in range(9)},
+        "age_ranges": {range_str: {"count": 0, "total_bins_difference": 0} for range_str in AGE.values()},
         "gender": {"Male": {"count": 0, "total_bins_difference": 0}, "Female": {"count": 0, "total_bins_difference": 0}},
-        "race": {"Matched": 0, "Mismatched": 0, "Asian_matched": 0}
+        "race": {"Matched": 0, "Mismatched": 0}
     }
+    
+    # Initialize lists for race statistics: total images, mismatches, and matches for each race
+    race_total_images = [0] * len(race_names)
+    race_mismatched_images = [0] * len(race_names)
+    race_matched_images = [0] * len(race_names)
+    
+    # Process each row
+    for _, row in merged_df.iterrows():
+        # Determine age range and bins difference
+        predicted_age_range = map_age_to_range(row['age_y'])
+        bins_difference = 0
+        
+        # Age statistics
+        statistics["total"]["count"] += 1
+        
+        # Calculate the actual age range index
+        actual_age_range_index = None
+        age_x_parts = row['age_x'].split('-')
+        if 'more than' in age_x_parts[0].strip().lower():
+            actual_age_range_index = (70, float('inf'))
+        else:
+            age_x_lower = int(age_x_parts[0])
+            age_x_upper = int(age_x_parts[1])
+            for age_range, range_str in AGE.items():
+                if age_range[0] <= age_x_lower <= age_range[1] and age_range[0] <= age_x_upper <= age_range[1]:
+                    actual_age_range_index = age_range
+                    break
 
-    if 'race' in merged_df.columns:  # Check if 'race' column is present
-        for index, row in predictions_df.iterrows():
-            age = row['age']
-            age_range = map_age_to_range(age)
-            bins_difference = 0  # Initialize bins_difference to 0
+        predicted_age_range_index = [k for k, v in AGE.items() if v == predicted_age_range][0]
 
-            # Age statistics
-            statistics["total"]["count"] += 1
-            predicted_age = row['age']
-            predicted_age_range = map_age_to_range(predicted_age)
-            if predicted_age_range != -1:
-                predicted_age = int(predicted_age)
-                predicted_age_range = map_age_to_range(predicted_age)
-                bins_difference = abs(age_range - predicted_age_range)
-                statistics["total"]["total_bins_difference"] += bins_difference
-                statistics["age_ranges"][age_range]["count"] += 1
-                statistics["age_ranges"][age_range]["total_bins_difference"] += bins_difference
+        bins_difference = abs(list(AGE.keys()).index(predicted_age_range_index) - list(AGE.keys()).index(actual_age_range_index))
+        statistics["total"]["total_bins_difference"] += bins_difference
 
-            # Gender statistics
-            gender = row['gender']
-            gender = gender.replace("Man", "Male")  # Change "Man" to "Male"
-            statistics["gender"][gender]["count"] += 1
-            statistics["gender"][gender]["total_bins_difference"] += bins_difference
+        # Update age range statistics
+        statistics["age_ranges"][predicted_age_range]["count"] += 1
+        statistics["age_ranges"][predicted_age_range]["total_bins_difference"] += bins_difference
 
-            # Race statistics
-            race_x = row['race_x'].strip()  # Remove leading and trailing whitespaces
-            race_y = row['race_y'].strip()  # Remove leading and trailing whitespaces
-            if race_x == race_y:
-                statistics["race"]["Matched"] += 1
-            else:
-                statistics["race"]["Mismatched"] += 1
-            if race_y.lower() in ['asian', 'east asian', 'southeast asian']:
-                statistics["race"]["Asian_matched"] += 1
-    else:
-        print("Warning: 'race' column not found in merged DataFrame.")
+        # Gender statistics
+        gender = row['gender_x']
+        statistics["gender"][gender]["count"] += 1
+        statistics["gender"][gender]["total_bins_difference"] += bins_difference
+        
+        # Race statistics
+        race_x = row['race_x'].strip() if isinstance(row['race_x'], str) else None
+        race_y = row['race_y'].strip() if isinstance(row['race_y'], str) else None
+        
+        # Standardize race names
+        if race_x.lower() in ['southeast asian', 'east asian']:
+            race_x = 'Asian'
+        if race_y.lower() in ['southeast asian', 'east asian']:
+            race_y = 'Asian'
+        
+        # Update race statistics
+        race_x_index = race_names.index(race_x)
+        race_total_images[race_x_index] += 1
+        
+        if race_x == race_y:
+            statistics["race"]["Matched"] += 1
+            race_matched_images[race_x_index] += 1
+        else:
+            statistics["race"]["Mismatched"] += 1
+            race_mismatched_images[race_x_index] += 1
 
+    # Add the race mismatch data and race matched data to statistics
+    statistics["race"]["race_mismatch"] = list(zip(race_names, race_total_images, race_mismatched_images, race_matched_images))
+    
     return statistics
-
 
 # Function to print statistics
 def print_statistics(statistics):
@@ -90,45 +103,40 @@ def print_statistics(statistics):
     print("----------------")
     print(f"Total images analyzed: {statistics['total']['count']}")
     if statistics['total']['count'] > 0:
-        print(f"Average absolute age difference: {statistics['total']['total_bins_difference'] / statistics['total']['count']:.2f}")
+        print(f"Average bin difference: {statistics['total']['total_bins_difference'] / statistics['total']['count']:.2f}")
     else:
-        print("Average absolute age difference: N/A (No images analyzed)")
+        print("Average bin difference: N/A (No images analyzed)")
+    
     print("\nAge Range Statistics:")
     for age_range, stats in statistics['age_ranges'].items():
         if stats['count'] == 0:
-            print(f"No images in Age Range {age_range * 10}-{(age_range + 1) * 10 - 1}")
+            print(f"No images in Age Range {age_range}")
         else:
-            print(f"Age Range {age_range * 10}-{(age_range + 1) * 10 - 1}:")
+            print(f"Age Range {age_range}:")
             print(f"\tTotal images: {stats['count']}")
-            print(f"\tAverage absolute age difference: {stats['total_bins_difference'] / stats['count']:.2f}")
-
-    print("\nGender Statistics:")
-    for gender, stats in statistics['gender'].items():
-        print(f"Gender: {gender}")
-        print(f"\tTotal images: {stats['count']}")
-        print(f"\tAverage absolute age difference: {stats['total_bins_difference'] / stats['count']:.2f}")
-
+            print(f"\tAverage bin difference: {stats['total_bins_difference'] / stats['count']:.2f}")
+    
     print("\nRace Statistics:")
-    print(f"Matched: {statistics['race']['Matched']}")
-    print(f"Mismatched: {statistics['race']['Mismatched']}")
-    print(f"Asian Matched: {statistics['race']['Asian_matched']}")
+
+    print("\nMismatch and Match Counts per Race:")
+    for race, total_images, mismatched_images, matched_images in statistics["race"]["race_mismatch"]:
+        print(f"Race: {race} - Mismatched: {mismatched_images} - Total images: {total_images} - Mismatch Rate: {(mismatched_images / total_images * 100):.2f}%")
+
 
 
 if __name__ == "__main__":
     # Load ground truth labels
     val_df = load_labels("dataset/fairface_label_val.csv")
-    print(val_df.head())
 
     # Load predictions from the CSV file
     predictions_df = pd.read_csv("predictions.csv")
-    print(predictions_df.head())
 
     # Merge predictions with the ground truth based on 'file' column
-    merged_df = val_df.merge(predictions_df, how='left', on='file')
-    print(merged_df.head())
+    merged_df = val_df.merge(predictions_df, how='inner', on='file')
+    merged_df = merged_df.drop(columns=['service_test'])
 
     # Calculate statistics
-    statistics = calculate_statistics(predictions_df, merged_df)
+    statistics = calculate_statistics(merged_df)
 
     # Print statistics
     print_statistics(statistics)
