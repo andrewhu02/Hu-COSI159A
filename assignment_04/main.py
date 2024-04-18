@@ -70,16 +70,14 @@ def calculate_statistics(predictions_df: pd.DataFrame, merged_df: pd.DataFrame):
             statistics["gender"][gender]["total_bins_difference"] += bins_difference
 
             # Race statistics
-            race = row['race']
-            if race.lower() in ['asian', 'east asian', 'southeast asian']:
-                race = 'Asian'
-            if 'race' in merged_df.columns:  # Check if 'race' column is present
-                if race in merged_df['race'].values:
-                    statistics["race"]["Matched"] += 1
-                else:
-                    statistics["race"]["Mismatched"] += 1
-                if race.lower() in ['asian', 'east asian', 'southeast asian']:
-                    statistics["race"]["Asian_matched"] += 1
+            race_x = row['race_x'].strip()  # Remove leading and trailing whitespaces
+            race_y = row['race_y'].strip()  # Remove leading and trailing whitespaces
+            if race_x == race_y:
+                statistics["race"]["Matched"] += 1
+            else:
+                statistics["race"]["Mismatched"] += 1
+            if race_y.lower() in ['asian', 'east asian', 'southeast asian']:
+                statistics["race"]["Asian_matched"] += 1
     else:
         print("Warning: 'race' column not found in merged DataFrame.")
 
@@ -91,7 +89,10 @@ def print_statistics(statistics):
     print("Statistics:")
     print("----------------")
     print(f"Total images analyzed: {statistics['total']['count']}")
-    print(f"Average absolute age difference: {statistics['total']['total_bins_difference'] / statistics['total']['count']:.2f}")
+    if statistics['total']['count'] > 0:
+        print(f"Average absolute age difference: {statistics['total']['total_bins_difference'] / statistics['total']['count']:.2f}")
+    else:
+        print("Average absolute age difference: N/A (No images analyzed)")
     print("\nAge Range Statistics:")
     for age_range, stats in statistics['age_ranges'].items():
         if stats['count'] == 0:
@@ -108,41 +109,9 @@ def print_statistics(statistics):
         print(f"\tAverage absolute age difference: {stats['total_bins_difference'] / stats['count']:.2f}")
 
     print("\nRace Statistics:")
-    for race, count in statistics['race'].items():
-        print(f"{race.capitalize()}: {count}")
-
-
-# Function to plot age histogram
-def plot_age_histogram(predictions_df, output_file: str | None = None):
-    age_ranges = list(AGE.keys())
-    age_counts = [predictions_df['age'].apply(map_age_to_range).value_counts().get(age_range, 0) for age_range in age_ranges]
-
-    plt.bar(range(len(age_ranges)), age_counts, tick_label=age_ranges)
-    plt.xlabel('Age Range')
-    plt.ylabel('Frequency')
-    plt.title('Age Distribution')
-    if output_file:
-        plt.savefig(output_file, dpi=300)
-    else:
-        plt.show()
-
-# Function to plot age distribution by race for incorrect predictions
-def plot_race_incorrect_predictions(predictions_df, output_file: str | None = None):
-    if 'predicted_age' not in predictions_df.columns:
-        print("Error: 'predicted_age' column not found in DataFrame.")
-        return
-
-    incorrect_predictions = predictions_df[predictions_df['age'] != predictions_df['predicted_age']]
-    race_counts = incorrect_predictions['race'].apply(lambda x: map_race_to_category(x.lower())).value_counts()
-
-    plt.bar(race_counts.index, race_counts.values)
-    plt.xlabel('Race')
-    plt.ylabel('Number of Incorrect Predictions')
-    plt.title('Incorrect Age Predictions by Race')
-    if output_file:
-        plt.savefig(output_file, dpi=300)
-    else:
-        plt.show()
+    print(f"Matched: {statistics['race']['Matched']}")
+    print(f"Mismatched: {statistics['race']['Mismatched']}")
+    print(f"Asian Matched: {statistics['race']['Asian_matched']}")
 
 
 if __name__ == "__main__":
@@ -154,9 +123,6 @@ if __name__ == "__main__":
     predictions_df = pd.read_csv("predictions.csv")
     print(predictions_df.head())
 
-    # Filter val_df to include only files corresponding to predictions_df
-    val_df = val_df[val_df['file'].isin(predictions_df['file'])]
-
     # Merge predictions with the ground truth based on 'file' column
     merged_df = val_df.merge(predictions_df, how='left', on='file')
     print(merged_df.head())
@@ -166,9 +132,3 @@ if __name__ == "__main__":
 
     # Print statistics
     print_statistics(statistics)
-
-    # Plot age histogram
-    plot_age_histogram(predictions_df, output_file="age_histogram.png")
-
-    # Plot distribution of incorrect predictions by race
-    plot_race_incorrect_predictions(merged_df, output_file="race_incorrect_predictions.png")
